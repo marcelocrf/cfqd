@@ -1,0 +1,28 @@
+# South German Credit (UCI 522). EXAMPLE, to be validated against Marcelo's
+# constraint table (T6): types, groups and constraints still need checking.
+# Types: numeric | ordinal | nominal
+# Constraints: free | immutable | increase_only | irreversible | excluded
+name: german_credit
+target: credit_risk
+groups: [contract, accounts, employment_capacity, collateral]
+features:
+  - {name: status,                  type: ordinal, constraint: free,          group: accounts}
+  - {name: duration,                type: numeric, constraint: free,          group: contract}
+  - {name: credit_history,          type: ordinal, constraint: irreversible}
+  - {name: purpose,                 type: nominal, constraint: free,          group: contract}
+  - {name: amount,                  type: numeric, constraint: free,          group: contract}
+  - {name: savings,                 type: ordinal, constraint: free,          group: accounts}
+  - {name: employment_duration,     type: ordinal, constraint: increase_only, group: employment_capacity}
+  - {name: installment_rate,        type: ordinal, constraint: free,          group: contract}
+  - {name: personal_status_sex,     type: nominal, constraint: immutable}
+  - {name: other_debtors,           type: nominal, constraint: free,          group: collateral}
+  - {name: present_residence,       type: ordinal, constraint: increase_only}
+  - {name: property,                type: ordinal, constraint: free,          group: collateral}
+  - {name: age,                     type: numeric, constraint: immutable}
+  - {name: other_installment_plans, type: nominal, constraint: free,          group: employment_capacity}
+  - {name: housing,                 type: nominal, constraint: free,          group: collateral}
+  - {name: number_credits,          type: ordinal, constraint: free,          group: employment_capacity}
+  - {name: job,                     type: ordinal, constraint: free,          group: employment_capacity}
+  - {name: people_liable,           type: ordinal, constraint: immutable}
+  - {name: telephone,               type: nominal, constraint: free}
+  - {name: foreign_worker,          type: nominal, constraint: immutable}
