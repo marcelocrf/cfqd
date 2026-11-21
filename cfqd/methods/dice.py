@@ -15,6 +15,17 @@ shared with FACE and controlled by ``train_predictions``:
 - "counted": everything is charged.
 OPEN DECISION for the group (plan, section 8).
 
+Budget handling of ``method="random"`` (C9, 2026-11-21). dice-ml predicts the query
+once and then batches of ``sample_size`` (1000) candidates, and always evaluates at
+least two batches, so a run costs about 2,031 queries and returned nothing at budgets
+<= 2,000. Two changes, neither of which touches a run that fits in its budget:
+
+- ``sample_size`` = min(1000, (budget - 1 - total_cfs) // 2), so the two mandatory
+  batches fit (still 1000 at budgets >= 2,021; set ``sample_size`` to override);
+- anytime fallback: every valid candidate of an evaluated batch is kept; if the
+  budget runs out, up to ``total_cfs`` of them are drawn at random, which is the rule
+  dice-ml's random mode applies to the candidates it found.
+
 Constraints, given that DiCE has no notion of "increase only":
 - ``features_to_vary`` = mutable features (minus features holding their sentinel)
 - ``permitted_range`` per instance: [x_j, high] for increase-only features,
@@ -175,6 +186,7 @@ class Dice(CounterfactualMethod):
         self._train_df[OUTCOME] = np.asarray(y_train).astype(int)
         self._exp = None
         self._last_pop = None
+        self._random_found: list[np.ndarray] = []
         self._proxy = _Proxy(spec.names)
 
     # ------------------------------------------------------------ frames
@@ -217,6 +229,20 @@ class Dice(CounterfactualMethod):
                         self._last_pop = (arr.copy(), np.asarray(out).copy())
                     return out
                 exp.predict_fn_scores = scores_spy
+            if self.method == "random" and hasattr(exp, "predict_fn"):
+                # Anytime fallback for the random mode: keep the valid candidates of
+                # every evaluated batch (already paid for).
+                orig_predict = exp.predict_fn
+
+                def predict_spy(inp):
+                    out = orig_predict(inp)
+                    if isinstance(inp, pd.DataFrame) and len(inp) > 1:
+                        valid = np.asarray(out).argmax(axis=1) == self._desired
+                        if valid.any():
+                            self._random_found.append(
+                                inp[self._spec.names][valid].astype(float).to_numpy())
+                    return out
+                exp.predict_fn = predict_spy
             self._exp = exp
         return self._exp
 
@@ -224,6 +250,14 @@ class Dice(CounterfactualMethod):
         """Valid members of the last evaluated population, closest first (the same
         rule DiCE applies to its final population), capped at total_cfs."""
         spec = self._spec
+        if self.method == "random":
+            if not self._random_found:
+                return CFResult(self.name, empty(spec), 0, 0.0)
+            cfs = np.unique(np.vstack(self._random_found), axis=0)
+            if len(cfs) > self.total_cfs:
+                cfs = cfs[np.sort(np.random.choice(len(cfs), self.total_cfs, replace=False))]
+            return CFResult(self.name, cfs, 0, 0.0, found_at=[self._proxy.counting.n_queries] * len(cfs),
+                            extra={"anytime_fallback": True})
         if self._last_pop is None:
             return CFResult(self.name, empty(spec), 0, 0.0)
         pop, scores = self._last_pop
@@ -244,6 +278,7 @@ class Dice(CounterfactualMethod):
         exp = self._explainer()
         self._proxy.counting = model
         self._last_pop, self._x, self._desired = None, x, int(desired)
+        self._random_found = []
         s = int(rng.integers(2**31))
         random.seed(s)
         np.random.seed(s)
@@ -272,6 +307,8 @@ class Dice(CounterfactualMethod):
                   features_to_vary=to_vary, permitted_range=permitted, verbose=False)
         if self.method == "random":
             kw["random_seed"] = s
+            if model.budget is not None:  # C9: the two mandatory batches must fit
+                kw["sample_size"] = int(min(1000, max(1, (model.budget - 1 - self.total_cfs) // 2)))
         kw.update(self.gen_kwargs)
         try:
             out = exp.generate_counterfactuals(query, **kw)

@@ -78,6 +78,20 @@ def test_method_respects_constraints_and_budget(setup, make):
     assert len(res.cfs) > 0 and (cm.predict_uncounted(res.cfs) == 1).any()
 
 
+@pytest.mark.parametrize("budget", [300, 1000, 2000])
+def test_dice_random_works_below_its_fixed_cost(setup, budget):
+    """C9: dice-ml's random mode needs ~2,031 queries with sample_size=1000; with the
+    budget-aware sample size and the anytime fallback it returns valid CFs below that."""
+    X, y, spec, enc, lr, rf, x = setup
+    cm = CountingModel(lr)
+    res = Dice(X, y, spec, method="random", total_cfs=4).explain(x, cm, spec, desired=1,
+                                                                  budget=budget, seed=0)
+    assert res.n_queries <= budget
+    assert 0 < len(res.cfs) <= 4 and (cm.predict_uncounted(res.cfs) == 1).all()
+    for c in res.cfs:
+        assert constraint_violations(x, c, spec) == 0
+
+
 def test_wachter_refuses_rf(setup):
     X, y, spec, enc, lr, rf, x = setup
     with pytest.raises(TypeError):
