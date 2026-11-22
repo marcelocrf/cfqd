@@ -1,9 +1,12 @@
 # CFQD — Full run: results and concerns
 
-*Branch `marcelo-21nov` · 2026-11-21 · Portuguese version: [full_run_results.pt-BR.md](full_run_results.pt-BR.md)*
+*Branch `marcelo-21nov` · 2026-11-21, updated 2026-11-22 after the re-run · Portuguese version: [full_run_results.pt-BR.md](full_run_results.pt-BR.md)*
 
-All numbers come from `results/full/summary/*.csv` (700 configurations, 70,000 instance × budget rows)
-and `results/full/manifest.jsonl`, plus the outputs saved in notebooks 03 and 05.
+Sections 2.1–2.6 use `results/full/summary/*.csv` (700 configurations, 70,000 instance × budget rows)
+and `results/full/manifest.jsonl`, plus the outputs saved in notebook 03.
+**Update of 2026-11-22:** all 700 configurations were re-run on the committed code (`results/full_rerun`), with the
+DiCE-random fix (C9), and the full simulation was run (`results/simulation`). The re-run reproduces the original
+results (C4). Section 2.7, section 2.8 and the DiCE-random rows of §2.3 come from these new runs.
 Unless a section says otherwise, numbers are at the **largest budget (10,000 queries)**. Each
 (dataset, model, method, seed) is first averaged over its 20 instances, then averaged across seeds, models and datasets.
 
@@ -21,9 +24,14 @@ Unless a section says otherwise, numbers are at the **largest budget (10,000 que
    that sees the grid and the only one whose fitness is the evaluation distance. It also uses the whole budget while
    the baselines stop after a median of 1 to 2,031 queries. Per returned counterfactual, DiCE is about as diverse
    in strategies as MAP-Elites, or more (concern C1).
-5. **The run mixes code versions.** 438 of the 700 configurations ran on source code older than the committed code,
-   including every Adult, German Credit and HELOC configuration (concern C4).
-6. **RQ2 (QD vs. QD) cannot be addressed yet.** NS, NSLC, surprise and MOC are not implemented. Plausibility is not
+5. **The mix of code versions does not change the results** (C4, resolved on 2026-11-22). 438 of the 700
+   configurations had run on older source code. A re-run of all 700 on the committed code gives identical results
+   in 696. The other 4 are FACE, each differing on a single instance.
+6. **The full simulation confirms the route result.** MAP-Elites finds about twice as many of the known routes as
+   DiCE-genetic (0.66 vs. 0.34 at 10,000 queries) in every (model, seed) block. It is the only method that regularly
+   reaches the far routes. Two caveats: shuffling the grid costs it 0.07 of recall, and 42% of its counterfactuals
+   flip the model without meeting any true route (C18).
+7. **RQ2 (QD vs. QD) cannot be addressed yet.** NS, NSLC, surprise and MOC are not implemented. Plausibility is not
    measured either, so the "without losing plausibility" part of RQ1 is still open.
 
 ---
@@ -115,7 +123,9 @@ Mean over all datasets, models and seeds.
 | MAP-Elites: cells filled | 39.4 | 52.6 | 64.2 | 77.1 | 85.5 |
 | MAP-Elites: success | 0.955 | 0.967 | 0.973 | 0.975 | 0.977 |
 | DiCE-genetic: coverage | 0.057 | 0.056 | 0.056 | 0.056 | 0.056 |
-| DiCE-random: coverage | **0.000** | **0.000** | **0.000** | 0.050 | 0.060 |
+| DiCE-random: coverage, original run | **0.000** | **0.000** | **0.000** | 0.050 | 0.060 |
+| DiCE-random: coverage, after the C9 fix | 0.052 | 0.056 | 0.057 | 0.059 | 0.060 |
+| DiCE-random: success, after the C9 fix | 0.875 | 0.895 | 0.908 | 0.938 | 0.951 |
 | Wachter: coverage | 0.022 | 0.022 | 0.022 | 0.022 | 0.022 |
 | FACE: coverage | 0.021 | 0.021 | 0.021 | 0.021 | 0.021 |
 
@@ -124,8 +134,10 @@ Mean over all datasets, models and seeds.
   average. On German Credit, coverage rises from 0.12 to 0.34 across the curve.
 - **The baselines are flat.** DiCE-genetic, Wachter and FACE converge with very few queries and ignore the extra budget.
   This confirms the observation in notebook 04 that motivated the curve design.
-- **DiCE-random returns nothing at budgets ≤ 2,000.** Its first call costs about 2,031 queries and it has no anytime
-  fallback. This comes from our adapter, not from the method (C9).
+- **In the original run, DiCE-random returned nothing at budgets ≤ 2,000.** Its first call cost about 2,031 queries
+  and it had no anytime fallback. This came from our adapter, not from the method (C9). After the fix it finds a
+  counterfactual for 88% of the instances at 500 queries. It stays flat in coverage (0.05–0.06), so MAP-Elites's lead
+  is unchanged at every budget.
 
 ### 2.4 Validity, success and constraints
 
@@ -214,45 +226,67 @@ Lower rank is better.
   conservative (C13).
 - Treating seeds as blocks (150 blocks) gives p ≈ 1e-89. That is pseudo-replication and should not be reported.
 
-### 2.7 Simulation study (quick version, notebook 05)
+### 2.7 Simulation study (full design, `results/simulation`)
 
-One seed and 5 instances per model. These results are indicative only, and they are not versioned in `results/`.
+The synthetic data has 4 known routes to the favorable class, each a pair of features. Route 0 is near the typical
+instance and routes 1–3 are far. In the **aligned** variant the descriptor groups are the routes. In the **shuffled**
+variant the route features are regrouped at random, so the grid does not match the routes. The design is 3 models ×
+4 methods × 3 seeds × 10 instances × 3 budgets for each variant: 66 configurations and 1,980 rows, run on
+2026-11-21 on the committed code. It replaces the quick version (1 seed, 5 instances), which gave the same picture.
 
-| Method | Route recall, aligned descriptor (500 / 2,000 / 10,000) | Route recall, shuffled descriptor (at 10,000) |
-| --- | --- | ---: |
-| MAP-Elites | 0.78 / 0.72 / 0.73 | 0.70 |
-| DiCE-genetic | 0.37 / 0.37 / 0.37 | 0.37 |
-| FACE | 0.23 / 0.23 / 0.23 | 0.23 |
-| Wachter | 0.05 / 0.05 / 0.05 | 0.05 |
+| Method | Route recall, aligned (500 / 2,000 / 10,000) | Route recall, shuffled (500 / 2,000 / 10,000) | Far routes found (of 3) at 10,000, aligned / shuffled | Runs that find all 4 routes at 10,000, aligned / shuffled |
+| --- | --- | --- | ---: | ---: |
+| MAP-Elites | **0.69 / 0.67 / 0.66** | **0.66 / 0.61 / 0.59** | **1.68 / 1.47** | **17% / 8%** |
+| DiCE-genetic | 0.34 / 0.34 / 0.34 | 0.34 / 0.34 / 0.34 | 0.42 / 0.42 | 0% / 0% |
+| FACE | 0.19 / 0.19 / 0.19 | 0.19 / 0.19 / 0.19 | 0.26 / 0.26 | 0% / 0% |
+| Wachter (LR, NN) | 0.07 / 0.07 / 0.07 | 0.07 / 0.07 / 0.07 | 0.12 / 0.12 | 0% / 0% |
 
 **Comment.**
-- **MAP-Elites finds about twice as many routes as DiCE.** Its recall barely changes when the descriptor groups are
-  shuffled (−0.03), so its advantage does not come from a grid aligned with the routes. This answers Mary's concern
-  about a "rigged" simulation, at least in the quick run.
-- **MAP-Elites still misses routes** in 56 of its 90 instance × budget runs.
-- **Recall can drop as the budget grows** (0.78 → 0.73). A closer counterfactual on another route can replace an
-  elite, so the archive's fitness rule can delete route diversity.
-- **The LR result is limited by the model:** LR cannot represent the OR between routes (MAP-Elites recall 0.55 with
-  LR vs. 0.90 with NN, at budgets 500 and 2,000).
+- **MAP-Elites finds about twice as many routes as DiCE-genetic, in all 9 (model, seed) blocks of both variants.**
+  At 10,000 queries its margin over the best baseline is +0.32 aligned and +0.26 shuffled, and never below +0.15.
+- **The gap comes from the far routes.** Both methods find the near route (DiCE-genetic 92%, MAP-Elites 94% of
+  instances), but MAP-Elites finds 1.68 of the 3 far routes against 0.42. This supports the hypothesis of the
+  simulation: the classical methods stay on the nearest route.
+- **Shuffling the grid costs more than in the quick run:** −0.07 at 10,000 (0.66 → 0.59) instead of −0.03. MAP-Elites
+  is still far ahead, so the simulation is not "rigged", but an aligned grid does help. The baselines do not see the
+  grid, so their numbers are the same in both variants, as expected.
+- **Recall falls as the budget grows** (0.69 → 0.66 aligned, 0.66 → 0.59 shuffled). Per instance it drops between
+  2,000 and 10,000 queries in 17% of the runs and rises in 12%. This confirms the elite-replacement effect: a closer
+  counterfactual that meets no true route can evict an elite that did.
+- **MAP-Elites rarely finds every route:** all 4 in 17% of the runs (aligned) and 8% (shuffled).
+- **LR limits recall,** since it cannot represent the OR between routes: MAP-Elites reaches 0.61 with LR vs. 0.68 with NN
+  and RF (aligned, 10,000).
+- **Many counterfactuals meet no true route.** At 10,000 queries, 42% of MAP-Elites's valid counterfactuals (33%
+  shuffled) flip the model without satisfying any route, against 19% for DiCE-genetic, 22% for FACE and 73% for
+  Wachter. They exploit the gap between the model and the true boundary (the data has 10% label noise). See C18.
+- DiCE-genetic shows 790 "violations" in each variant. All of them are float32 rounding of the immutable feature (at
+  most 1.2e-7) against the 1e-9 tolerance of `constraint_violations`. They are not real changes (C19).
 
-### 2.8 Check against CARLA (notebook 03)
+### 2.8 Check against CARLA (re-run, 200 instances per cell)
 
-10 instances, seed 0, budget 10,000. These are the cases that differ from the reference used in `build_report_data.py`
-by 0.2 or more.
+Success at budget 10,000 from the re-run: 10 seeds × 20 instances = 200 instances per (method, dataset, model),
+under the same protocol as the rest of the benchmark. This replaces the earlier check (notebook 03: 10 instances,
+seed 0). The reference is the one used in `build_report_data.py`: 1.00 everywhere except Wachter on Adult + NN (0.50)
+and on COMPAS + NN (0.66). Cells are LR / NN / RF.
 
-| Method | Dataset | Model | Ours | Reference |
-| --- | --- | --- | ---: | ---: |
-| DiCE-genetic | GMC | NN | 0.5 | 1.00 |
-| FACE | GMC | NN | 0.4 | 1.00 |
-| FACE | Adult | LR, NN | 0.8 | 1.00 |
-| Wachter | GMC | NN | 0.8 | 1.00 |
-| Wachter | Adult | NN | 1.0 | 0.50 |
-| Wachter | COMPAS | NN | 1.0 | 0.66 |
+| Method | Adult | COMPAS | German Credit | GMC | HELOC |
+| --- | --- | --- | --- | --- | --- |
+| MAP-Elites | 1.00 / 1.00 / 1.00 | 0.94 / 0.98 / 0.92 | 1.00 / 1.00 / 1.00 | 0.93 / 0.94 / 1.00 | 1.00 / 1.00 / 0.94 |
+| DiCE-genetic | 1.00 / 1.00 / 1.00 | 0.91 / 0.94 / 0.92 | 1.00 / 1.00 / 1.00 | 0.83 / 0.81 / 1.00 | 1.00 / 0.92 / 0.81 |
+| DiCE-random | 1.00 / 1.00 / 1.00 | 0.83 / 0.93 / 0.81 | 1.00 / 1.00 / 1.00 | 0.94 / 0.95 / 0.96 | 1.00 / 1.00 / 0.82 |
+| Wachter (LR, NN) | 1.00 / 1.00 / – | 0.94 / 0.94 / – | 1.00 / 1.00 / – | 0.99 / 0.97 / – | 1.00 / 1.00 / – |
+| FACE | 0.81 / 0.88 / 0.85 | 0.89 / 0.91 / 0.90 | 0.89 / 0.86 / 0.90 | 0.78 / 0.84 / 0.99 | 0.81 / 0.73 / 0.78 |
 
-Four more cases sit at 0.9 vs. 1.00, i.e. one failed instance out of 10: DiCE-genetic and FACE on COMPAS + LR and on
-GMC + LR. Everything else matches. Wachter beats CARLA on Adult and COMPAS (NN). This was already flagged in the plan:
-CARLA ignores constraints, uses its own models and a 0.5-minute timeout. GMC + NN is the weak spot for DiCE, FACE
-and Wachter alike.
+**Comment.**
+- **The GMC + NN outliers of the small check were noise.** With 200 instances, DiCE-genetic goes from 0.5 to 0.81, FACE
+  from 0.4 to 0.84 and Wachter from 0.8 to 0.97.
+- **Wachter beats CARLA's numbers on Adult + NN (1.00 vs. 0.50) and COMPAS + NN (0.94 vs. 0.66),** which is now
+  confirmed with 200 instances. As the plan notes, CARLA ignores constraints, uses its own models and has a 0.5-minute
+  timeout.
+- **FACE is below the reference everywhere** (0.73–0.99). This is the same cause as in §2.4: projecting real data points
+  onto the instance's frozen values often loses the desired class.
+- **DiCE-genetic is low on GMC (LR, NN) and HELOC + RF** (0.81–0.83).
+- 0 constraint violations in the 14,000 rows.
 
 ---
 
@@ -305,6 +339,16 @@ Ordered by how much they threaten the main claim. Each concern lists the evidenc
 - *Action:* re-run the 438 configurations on the committed code. That is about 23 CPU-hours plus the 25 untimed
   configurations, roughly 4 h on 6 cores. A cheaper first step is to re-run a sample and diff the summaries. If they
   match, document it and keep the results.
+- **Status (2026-11-22): resolved.** All 700 configurations were re-run on the committed code with
+  `scripts/rerun_pipeline.py` into `results/full_rerun`. `scripts/compare_runs.py` compared the two runs row by row
+  in every result column; the output is `results/full_rerun/compare_with_full.csv`.
+  - **696 of 700 configurations are identical.** 20 of the 60,764 compared rows differ. The count leaves out the 9,236
+    DiCE-random rows that the C9 fix changes on purpose.
+  - **The 4 configurations that differ are all FACE, on one instance each.** On Adult + NN seed 3 and Adult + RF seed 7
+    FACE returns a different closest counterfactual (e.g. distance 0.49 → 0.33). On COMPAS + LR and COMPAS + NN seed 2
+    the counterfactual is the same but the query count differs.
+  - **Every other method is identical across all 7 old code hashes,** so the hash changes did not change any result.
+  - **The FACE differences come from nondeterminism, not from a code change** (C20). The original results stand.
 
 **C5. Plausibility is not measured.**
 - *Evidence:* LOF, nearest-neighbor distance and yNN are not implemented (`metrics.py`), but RQ1 asks for "without
@@ -340,6 +384,17 @@ Ordered by how much they threaten the main claim. Each concern lists the evidenc
   looks under-configured.
 - *Action:* add an anytime fallback for DiCE-random, or charge-aware sampling. Review the DiCE-genetic
   hyperparameters before reviewers do.
+- **Status (2026-11-22): the DiCE-random part is fixed** in `cfqd/methods/dice.py` (commit cde3eeb), with a test.
+  - **What changed:** the sample size now follows the budget, `(budget − 1 − total_cfs) // 2` capped at 1,000. Valid
+    candidates seen during the search are kept as an anytime fallback.
+  - **Low budgets:** in the re-run, success at 500 / 1,000 / 2,000 queries is 0.875 / 0.895 / 0.908 (it was 0), and
+    coverage is 0.052–0.057. It never exceeds the budget and has 0 violations.
+  - **How much of the output is the fallback:** 87–91% of the rows at ≤ 2,000 queries, 7% at 5,000 and 1% at 10,000.
+    At low budgets the output is therefore the valid random samples, without DiCE's post-processing (as in C10).
+  - **Rows the fix should not touch are unchanged:** every row where the original run finished inside its budget is
+    identical.
+  - **Budget 10,000:** success goes from 0.943 to 0.951 (HELOC 0.90 → 0.94), and coverage stays at 0.060.
+  - **Still open:** the DiCE-genetic settings.
 
 **C10. DiCE-genetic often returns its fallback, not its final answer.**
 - *Evidence:* at budget 10,000 the anytime fallback fires for 30% of instances (16–39% by dataset). At budget 500 it
@@ -370,22 +425,42 @@ Ordered by how much they threaten the main claim. Each concern lists the evidenc
 
 ### Low: worth noting
 
-- **C14. The CARLA check is small.** 10 instances and one seed, and GMC + NN deviates for three methods (§2.8). Worth
-  repeating with more instances before citing.
-- **C15. The simulation is a quick run.** One seed and 5 instances. Recall is not monotonic in budget. The full design
-  is planned for the paper extension.
+- **C14. The CARLA check was small.** 10 instances and one seed, and GMC + NN deviated for three methods.
+  *Resolved on 2026-11-22:* §2.8 now uses 200 instances per cell from the re-run, and the GMC + NN outliers disappear.
+- **C15. The simulation was a quick run.** One seed and 5 instances. *Resolved on 2026-11-22:* §2.7 now uses the full
+  design (3 seeds, 10 instances, 3 models, both variants). Recall is still not monotonic in budget.
 - **C16. Instances depend on the model.** Each model explains the rows *it* predicts unfavorable, so comparisons across
   models are unpaired. Comparisons across methods are paired.
 - **C17. Per-counterfactual rows are not in git.** `results/full/runs/` (~200 MB) lives on the Drive, so any re-analysis
-  at the counterfactual level (C1, C12) needs that copy.
+  at the counterfactual level (C1, C12) needs that copy. The re-run's `results/full_rerun/runs/` is not in git either.
+
+### Added on 2026-11-22, after the re-run
+
+**C18 (medium). Many counterfactuals exploit model errors.**
+- *Evidence:* in the simulation, at 10,000 queries, 42% of MAP-Elites's valid counterfactuals (33% with the shuffled
+  grid) flip the model without satisfying any true route. The share is 19% for DiCE-genetic, 22% for FACE and 73% for
+  Wachter (§2.7). MAP-Elites's archive fills cells with such points, and they can evict elites that sit on a route.
+- *Action:* report this share next to route recall. Measure plausibility (C5), and consider a data-support or
+  plausibility term in the fitness.
+
+- **C19 (low). DiCE's "violations" in the simulation are rounding.** DiCE returns float32 values, so the continuous
+  immutable feature moves by up to 1.2e-7, and `constraint_violations` flags it at 1e-9. The real datasets have
+  integer immutable features, so this does not show there. *Action:* restore frozen values exactly in the DiCE adapter,
+  or use a 1e-6 tolerance.
+- **C20 (low). FACE is not fully deterministic.** One instance in each of 4 configurations changed between identical
+  runs (C4). The likely cause is ties in the kNN graph among duplicate rows, broken differently between runs.
+  *Action:* add a stable tie-break to the graph and to the shortest-path search.
 
 ---
 
 ## 5. Suggested next steps
 
-1. Re-run, or sample-check, the 438 configurations that used old code (C4).
-2. Add the matched-k coverage analysis and strategies per counterfactual (C1). This needs `runs/` from the Drive.
-3. Implement plausibility and the integer flag (C5), and calibrate the effort bins (C11).
-4. Fix the DiCE-random fallback and review the DiCE-genetic settings (C9, C10).
+1. ~~Re-run, or sample-check, the 438 configurations that used old code (C4).~~ Done on 2026-11-22: the results
+   reproduce.
+2. Add the matched-k coverage analysis and strategies per counterfactual (C1). This needs the `runs/` folder.
+3. Implement plausibility and the integer flag (C5) and report the off-route share (C18). Calibrate the effort bins
+   (C11).
+4. ~~Fix the DiCE-random fallback~~ (done, C9). Review the DiCE-genetic settings (C9, C10).
 5. Decide `train_predictions` and the GMC scaling as a group (C3, C7).
-6. Implement MOC, NS, NSLC and surprise (C6), then run the final grid once, on one committed code version.
+6. Small fixes: the FACE tie-break (C20) and DiCE's frozen-value rounding (C19).
+7. Implement MOC, NS, NSLC and surprise (C6), then run the final grid once, on one committed code version.

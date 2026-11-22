@@ -1,9 +1,12 @@
 # CFQD — Rodada completa: resultados e preocupações
 
-*Branch `marcelo-21nov` · 2026-11-21 · Versão em inglês: [full_run_results.en.md](full_run_results.en.md)*
+*Branch `marcelo-21nov` · 2026-11-21, atualizado em 2026-11-22 após a re-rodada · Versão em inglês: [full_run_results.en.md](full_run_results.en.md)*
 
-Todos os números vêm de `results/full/summary/*.csv` (700 configurações, 70.000 linhas instância × orçamento) e de
-`results/full/manifest.jsonl`, além das saídas salvas nos notebooks 03 e 05.
+As seções 2.1–2.6 usam `results/full/summary/*.csv` (700 configurações, 70.000 linhas instância × orçamento) e
+`results/full/manifest.jsonl`, além das saídas salvas no notebook 03.
+**Atualização de 2026-11-22:** as 700 configurações foram re-rodadas com o código commitado (`results/full_rerun`),
+já com a correção do DiCE-random (C9), e a simulação completa foi rodada (`results/simulation`). A re-rodada reproduz
+os resultados originais (C4). A seção 2.7, a seção 2.8 e as linhas do DiCE-random na §2.3 vêm dessas rodadas novas.
 Salvo indicação em contrário, os números são do **maior orçamento (10.000 consultas)**. Cada
 (dataset, modelo, método, seed) é primeiro agregado pela média das suas 20 instâncias; depois, pela média entre
 seeds, modelos e datasets.
@@ -22,9 +25,14 @@ seeds, modelos e datasets.
    também é o único método que enxerga o grid e o único cujo fitness é a distância usada na avaliação. Além disso,
    ele gasta o orçamento inteiro, enquanto os baselines param após uma mediana de 1 a 2.031 consultas. Por
    contrafactual devolvido, o DiCE é tão diverso em estratégias quanto o MAP-Elites, ou mais (preocupação C1).
-5. **A rodada mistura versões de código.** 438 das 700 configurações rodaram com código-fonte anterior ao código
-   commitado, incluindo todas as de Adult, German Credit e HELOC (preocupação C4).
-6. **A RQ2 (QD vs. QD) ainda não pode ser respondida.** NS, NSLC, surprise e MOC não estão implementados.
+5. **A mistura de versões de código não muda os resultados** (C4, resolvida em 2026-11-22). 438 das 700
+   configurações tinham rodado com código-fonte mais antigo. Re-rodando as 700 com o código commitado, 696 dão
+   resultados idênticos. As outras 4 são do FACE, e cada uma difere em uma única instância.
+6. **A simulação completa confirma o resultado das rotas.** O MAP-Elites acha cerca do dobro das rotas conhecidas que o
+   DiCE-genetic acha (0,66 vs. 0,34 com 10.000 consultas), em todos os blocos (modelo, seed). É o único método que
+   chega com frequência às rotas distantes. Duas ressalvas: embaralhar o grid custa 0,07 de recall, e 42% dos seus
+   contrafactuais invertem o modelo sem cumprir nenhuma rota verdadeira (C18).
+7. **A RQ2 (QD vs. QD) ainda não pode ser respondida.** NS, NSLC, surprise e MOC não estão implementados.
    Plausibilidade também não é medida, então a parte "sem perder plausibilidade" da RQ1 continua em aberto.
 
 ---
@@ -120,7 +128,9 @@ Média sobre todos os datasets, modelos e seeds.
 | MAP-Elites: células preenchidas | 39,4 | 52,6 | 64,2 | 77,1 | 85,5 |
 | MAP-Elites: sucesso | 0,955 | 0,967 | 0,973 | 0,975 | 0,977 |
 | DiCE-genetic: cobertura | 0,057 | 0,056 | 0,056 | 0,056 | 0,056 |
-| DiCE-random: cobertura | **0,000** | **0,000** | **0,000** | 0,050 | 0,060 |
+| DiCE-random: cobertura, rodada original | **0,000** | **0,000** | **0,000** | 0,050 | 0,060 |
+| DiCE-random: cobertura, após a correção do C9 | 0,052 | 0,056 | 0,057 | 0,059 | 0,060 |
+| DiCE-random: sucesso, após a correção do C9 | 0,875 | 0,895 | 0,908 | 0,938 | 0,951 |
 | Wachter: cobertura | 0,022 | 0,022 | 0,022 | 0,022 | 0,022 |
 | FACE: cobertura | 0,021 | 0,021 | 0,021 | 0,021 | 0,021 |
 
@@ -129,8 +139,10 @@ Média sobre todos os datasets, modelos e seeds.
   em média. No German Credit, a cobertura sobe de 0,12 para 0,34 ao longo da curva.
 - **Os baselines são planos.** DiCE-genetic, Wachter e FACE convergem com pouquíssimas consultas e ignoram o
   orçamento extra. Isso confirma a observação do notebook 04 que motivou o desenho com curvas.
-- **O DiCE-random não devolve nada com orçamentos ≤ 2.000.** Sua primeira chamada custa cerca de 2.031 consultas e
-  ele não tem fallback anytime. Isso vem do nosso adaptador, não do método (C9).
+- **Na rodada original, o DiCE-random não devolvia nada com orçamentos ≤ 2.000.** Sua primeira chamada custava cerca
+  de 2.031 consultas, e ele não tinha fallback anytime. Isso vinha do nosso adaptador, não do método (C9). Depois da
+  correção, ele acha um contrafactual para 88% das instâncias com 500 consultas. A cobertura dele continua plana
+  (0,05–0,06), então a vantagem do MAP-Elites não muda em nenhum orçamento.
 
 ### 2.4 Validade, sucesso e restrições
 
@@ -220,45 +232,71 @@ com α = 0,05. Rank menor é melhor.
   Nemenyi é muito conservador (C13).
 - Usar as seeds como blocos (150 blocos) dá p ≈ 1e-89. Isso é pseudo-replicação e não deve ser reportado.
 
-### 2.7 Estudo de simulação (versão rápida, notebook 05)
+### 2.7 Estudo de simulação (desenho completo, `results/simulation`)
 
-Uma seed e 5 instâncias por modelo. Os resultados são apenas indicativos e não estão versionados em `results/`.
+Os dados sintéticos têm 4 rotas conhecidas para a classe favorável, cada uma formada por um par de atributos. A
+rota 0 fica perto da instância típica, e as rotas 1–3 ficam longe. Na variante **alinhada**, os grupos do descritor
+são as próprias rotas. Na variante **embaralhada**, os atributos das rotas são reagrupados ao acaso, então o grid não
+coincide com as rotas. O desenho é 3 modelos × 4 métodos × 3 seeds × 10 instâncias × 3 orçamentos em cada variante:
+66 configurações e 1.980 linhas, rodadas em 2026-11-21 com o código commitado. Substitui a versão rápida (1 seed,
+5 instâncias), que mostrava o mesmo quadro.
 
-| Método | Recall de rotas, descritor alinhado (500 / 2.000 / 10.000) | Recall de rotas, descritor embaralhado (em 10.000) |
-| --- | --- | ---: |
-| MAP-Elites | 0,78 / 0,72 / 0,73 | 0,70 |
-| DiCE-genetic | 0,37 / 0,37 / 0,37 | 0,37 |
-| FACE | 0,23 / 0,23 / 0,23 | 0,23 |
-| Wachter | 0,05 / 0,05 / 0,05 | 0,05 |
+| Método | Recall de rotas, alinhado (500 / 2.000 / 10.000) | Recall de rotas, embaralhado (500 / 2.000 / 10.000) | Rotas distantes achadas (de 3) em 10.000, alinhado / embaralhado | Execuções que acham as 4 rotas em 10.000, alinhado / embaralhado |
+| --- | --- | --- | ---: | ---: |
+| MAP-Elites | **0,69 / 0,67 / 0,66** | **0,66 / 0,61 / 0,59** | **1,68 / 1,47** | **17% / 8%** |
+| DiCE-genetic | 0,34 / 0,34 / 0,34 | 0,34 / 0,34 / 0,34 | 0,42 / 0,42 | 0% / 0% |
+| FACE | 0,19 / 0,19 / 0,19 | 0,19 / 0,19 / 0,19 | 0,26 / 0,26 | 0% / 0% |
+| Wachter (LR, NN) | 0,07 / 0,07 / 0,07 | 0,07 / 0,07 / 0,07 | 0,12 / 0,12 | 0% / 0% |
 
 **Comentário.**
-- **O MAP-Elites acha cerca do dobro de rotas que o DiCE.** O recall quase não muda quando os grupos do descritor são
-  embaralhados (−0,03), então a vantagem não vem de um grid alinhado com as rotas. Isso responde à preocupação da
-  Mary sobre uma simulação "feita sob medida", ao menos na rodada rápida.
-- **O MAP-Elites ainda perde rotas** em 56 das suas 90 execuções instância × orçamento.
-- **O recall pode cair quando o orçamento cresce** (0,78 → 0,73). Um contrafactual mais próximo, em outra rota, pode
-  substituir um elite, então a regra de fitness do arquivo pode apagar diversidade de rotas.
-- **O resultado da LR é limitado pelo modelo:** a LR não consegue representar o OU entre rotas (recall do MAP-Elites
-  de 0,55 com LR vs. 0,90 com NN, nos orçamentos 500 e 2.000).
+- **O MAP-Elites acha cerca do dobro de rotas que o DiCE-genetic, nos 9 blocos (modelo, seed) das duas variantes.**
+  Com 10.000 consultas, a vantagem sobre o melhor baseline é de +0,32 no alinhado e +0,26 no embaralhado, e nunca
+  fica abaixo de +0,15.
+- **A diferença vem das rotas distantes.** Os dois métodos acham a rota próxima (DiCE-genetic em 92% das instâncias,
+  MAP-Elites em 94%), mas o MAP-Elites acha 1,68 das 3 rotas distantes, contra 0,42. Isso apoia a hipótese da
+  simulação: os métodos clássicos ficam presos na rota mais próxima.
+- **Embaralhar o grid custa mais do que na rodada rápida:** −0,07 em 10.000 (0,66 → 0,59), em vez de −0,03. O
+  MAP-Elites continua bem à frente, então a simulação não é "feita sob medida", mas um grid alinhado ajuda. Os
+  baselines não enxergam o grid, por isso seus números são iguais nas duas variantes, como esperado.
+- **O recall cai quando o orçamento cresce** (0,69 → 0,66 no alinhado, 0,66 → 0,59 no embaralhado). Por instância, ele
+  cai entre 2.000 e 10.000 consultas em 17% das execuções e sobe em 12%. Isso confirma o efeito de substituição de
+  elites: um contrafactual mais próximo que não cumpre nenhuma rota verdadeira pode tirar do arquivo um elite que
+  cumpria.
+- **O MAP-Elites raramente acha todas as rotas:** as 4 em 17% das execuções (alinhado) e 8% (embaralhado).
+- **A LR limita o recall,** porque não consegue representar o OU entre rotas: o MAP-Elites chega a 0,61 com LR vs.
+  0,68 com NN e RF (alinhado, 10.000).
+- **Muitos contrafactuais não cumprem nenhuma rota verdadeira.** Com 10.000 consultas, 42% dos contrafactuais válidos
+  do MAP-Elites (33% no embaralhado) invertem o modelo sem satisfazer nenhuma rota, contra 19% do DiCE-genetic, 22% do
+  FACE e 73% do Wachter. Eles exploram a diferença entre o modelo e a fronteira verdadeira (os dados têm 10% de ruído
+  nos rótulos). Ver C18.
+- O DiCE-genetic mostra 790 "violações" em cada variante. Todas são arredondamento float32 do atributo imutável (no
+  máximo 1,2e-7) contra a tolerância de 1e-9 de `constraint_violations`. Não são mudanças reais (C19).
 
-### 2.8 Check contra o CARLA (notebook 03)
+### 2.8 Check contra o CARLA (re-rodada, 200 instâncias por célula)
 
-10 instâncias, seed 0, orçamento 10.000. Estes são os casos que diferem da referência usada em
-`build_report_data.py` por 0,2 ou mais.
+Sucesso com orçamento 10.000 na re-rodada: 10 seeds × 20 instâncias = 200 instâncias por (método, dataset, modelo),
+no mesmo protocolo do resto do benchmark. Substitui o check anterior (notebook 03: 10 instâncias, seed 0). A
+referência é a usada em `build_report_data.py`: 1,00 em tudo, exceto Wachter em Adult + NN (0,50) e em COMPAS + NN
+(0,66). As células são LR / NN / RF.
 
-| Método | Dataset | Modelo | Nosso | Referência |
-| --- | --- | --- | ---: | ---: |
-| DiCE-genetic | GMC | NN | 0,5 | 1,00 |
-| FACE | GMC | NN | 0,4 | 1,00 |
-| FACE | Adult | LR, NN | 0,8 | 1,00 |
-| Wachter | GMC | NN | 0,8 | 1,00 |
-| Wachter | Adult | NN | 1,0 | 0,50 |
-| Wachter | COMPAS | NN | 1,0 | 0,66 |
+| Método | Adult | COMPAS | German Credit | GMC | HELOC |
+| --- | --- | --- | --- | --- | --- |
+| MAP-Elites | 1,00 / 1,00 / 1,00 | 0,94 / 0,98 / 0,92 | 1,00 / 1,00 / 1,00 | 0,93 / 0,94 / 1,00 | 1,00 / 1,00 / 0,94 |
+| DiCE-genetic | 1,00 / 1,00 / 1,00 | 0,91 / 0,94 / 0,92 | 1,00 / 1,00 / 1,00 | 0,83 / 0,81 / 1,00 | 1,00 / 0,92 / 0,81 |
+| DiCE-random | 1,00 / 1,00 / 1,00 | 0,83 / 0,93 / 0,81 | 1,00 / 1,00 / 1,00 | 0,94 / 0,95 / 0,96 | 1,00 / 1,00 / 0,82 |
+| Wachter (LR, NN) | 1,00 / 1,00 / – | 0,94 / 0,94 / – | 1,00 / 1,00 / – | 0,99 / 0,97 / – | 1,00 / 1,00 / – |
+| FACE | 0,81 / 0,88 / 0,85 | 0,89 / 0,91 / 0,90 | 0,89 / 0,86 / 0,90 | 0,78 / 0,84 / 0,99 | 0,81 / 0,73 / 0,78 |
 
-Outros quatro casos ficam em 0,9 vs. 1,00, ou seja, uma instância com falha em 10: DiCE-genetic e FACE em COMPAS + LR
-e em GMC + LR. O resto bate. O Wachter supera o CARLA em Adult e COMPAS (NN). Isso já estava sinalizado no plano: o
-CARLA ignora restrições, usa seus próprios modelos e um timeout de 0,5 minuto. GMC + NN é o ponto fraco para DiCE,
-FACE e Wachter.
+**Comentário.**
+- **Os desvios em GMC + NN do check pequeno eram ruído.** Com 200 instâncias, o DiCE-genetic vai de 0,5 para 0,81, o
+  FACE de 0,4 para 0,84 e o Wachter de 0,8 para 0,97.
+- **O Wachter supera os números do CARLA em Adult + NN (1,00 vs. 0,50) e COMPAS + NN (0,94 vs. 0,66),** o que agora
+  está confirmado com 200 instâncias. Como o plano aponta, o CARLA ignora restrições, usa seus próprios modelos e tem um
+  timeout de 0,5 minuto.
+- **O FACE fica abaixo da referência em todos os casos** (0,73–0,99). A causa é a mesma da §2.4: projetar pontos reais
+  nos valores congelados da instância costuma perder a classe desejada.
+- **O DiCE-genetic fica baixo no GMC (LR, NN) e em HELOC + RF** (0,81–0,83).
+- 0 violações de restrição nas 14.000 linhas.
 
 ---
 
@@ -314,6 +352,18 @@ Em ordem de quanto ameaçam a conclusão principal. Cada preocupação traz a ev
 - *Ação:* re-rodar as 438 configurações com o código commitado. São cerca de 23 horas de CPU, mais as 25 sem tempo
   registrado, algo como 4 h em 6 núcleos. Um primeiro passo mais barato é re-rodar uma amostra e comparar os
   summaries. Se baterem, documentar isso e manter os resultados.
+- **Situação (2026-11-22): resolvida.** As 700 configurações foram re-rodadas com o código commitado, usando
+  `scripts/rerun_pipeline.py`, em `results/full_rerun`. O `scripts/compare_runs.py` comparou as duas rodadas linha a
+  linha em todas as colunas de resultado; a saída está em `results/full_rerun/compare_with_full.csv`.
+  - **696 das 700 configurações são idênticas.** 20 das 60.764 linhas comparadas diferem. A conta deixa de fora as
+    9.236 linhas do DiCE-random que a correção do C9 muda de propósito.
+  - **As 4 configurações que diferem são todas do FACE, cada uma em uma única instância.** Em Adult + NN seed 3 e Adult
+    + RF seed 7, o FACE devolve outro contrafactual mais próximo (por exemplo, distância 0,49 → 0,33). Em COMPAS + LR
+    e COMPAS + NN seed 2, o contrafactual é o mesmo, mas o número de consultas muda.
+  - **Todos os outros métodos são idênticos nos 7 hashes de código antigos,** então as mudanças de hash não mudaram
+    nenhum resultado.
+  - **As diferenças do FACE vêm de não-determinismo, não de mudança de código** (C20). Os resultados originais
+    continuam valendo.
 
 **C5. A plausibilidade não é medida.**
 - *Evidência:* LOF, distância ao vizinho mais próximo e yNN não estão implementados (`metrics.py`), mas a RQ1 pede
@@ -350,6 +400,19 @@ Em ordem de quanto ameaçam a conclusão principal. Cada preocupação traz a ev
   (L0 1,7 vs. 4,4) e na redundância. O DiCE-genetic, nosso baseline principal, parece mal configurado.
 - *Ação:* acrescentar um fallback anytime ao DiCE-random, ou amostragem que respeite o orçamento. Revisar os
   hiperparâmetros do DiCE-genetic antes que os revisores o façam.
+- **Situação (2026-11-22): a parte do DiCE-random está corrigida** em `cfqd/methods/dice.py` (commit cde3eeb), com
+  teste.
+  - **O que mudou:** o tamanho da amostra agora acompanha o orçamento, `(orçamento − 1 − total_cfs) // 2`, limitado a
+    1.000. Os candidatos válidos vistos durante a busca são guardados como fallback anytime.
+  - **Orçamentos baixos:** na re-rodada, o sucesso com 500 / 1.000 / 2.000 consultas é 0,875 / 0,895 / 0,908 (era 0),
+    e a cobertura fica entre 0,052 e 0,057. Ele nunca passa do orçamento e tem 0 violações.
+  - **Quanto da saída é o fallback:** 87–91% das linhas com ≤ 2.000 consultas, 7% com 5.000 e 1% com 10.000. Nos
+    orçamentos baixos, a saída são, portanto, as amostras aleatórias válidas, sem o pós-processamento do DiCE (como
+    no C10).
+  - **As linhas que a correção não deveria mexer não mudaram:** toda linha em que a rodada original terminou dentro do
+    orçamento é idêntica.
+  - **Orçamento 10.000:** o sucesso vai de 0,943 para 0,951 (HELOC 0,90 → 0,94), e a cobertura fica em 0,060.
+  - **Ainda em aberto:** as configurações do DiCE-genetic.
 
 **C10. O DiCE-genetic muitas vezes devolve o fallback, não sua resposta final.**
 - *Evidência:* com orçamento 10.000, o fallback anytime dispara em 30% das instâncias (16–39% conforme o dataset).
@@ -380,23 +443,46 @@ Em ordem de quanto ameaçam a conclusão principal. Cada preocupação traz a ev
 
 ### Baixas: vale registrar
 
-- **C14. O check contra o CARLA é pequeno.** São 10 instâncias e uma seed, e GMC + NN desvia para três métodos (§2.8).
-  Vale repetir com mais instâncias antes de citar.
-- **C15. A simulação é uma rodada rápida.** Uma seed e 5 instâncias. O recall não é monotônico no orçamento. O desenho
-  completo está previsto para a extensão do artigo.
+- **C14. O check contra o CARLA era pequeno.** Eram 10 instâncias e uma seed, e GMC + NN desviava para três métodos.
+  *Resolvida em 2026-11-22:* a §2.8 agora usa 200 instâncias por célula da re-rodada, e os desvios em GMC + NN somem.
+- **C15. A simulação era uma rodada rápida.** Uma seed e 5 instâncias. *Resolvida em 2026-11-22:* a §2.7 agora usa o
+  desenho completo (3 seeds, 10 instâncias, 3 modelos, as duas variantes). O recall continua não monotônico no
+  orçamento.
 - **C16. As instâncias dependem do modelo.** Cada modelo explica as linhas que *ele* prevê como desfavoráveis, então
   comparações entre modelos não são pareadas. As comparações entre métodos são pareadas.
 - **C17. As linhas por contrafactual não estão no git.** `results/full/runs/` (~200 MB) está no Drive, então qualquer
-  reanálise no nível do contrafactual (C1, C12) precisa dessa cópia.
+  reanálise no nível do contrafactual (C1, C12) precisa dessa cópia. O `results/full_rerun/runs/` da re-rodada também
+  não está no git.
+
+### Acrescentadas em 2026-11-22, após a re-rodada
+
+**C18 (média). Muitos contrafactuais exploram erros do modelo.**
+- *Evidência:* na simulação, com 10.000 consultas, 42% dos contrafactuais válidos do MAP-Elites (33% com o grid
+  embaralhado) invertem o modelo sem satisfazer nenhuma rota verdadeira. A fração é de 19% no DiCE-genetic, 22% no
+  FACE e 73% no Wachter (§2.7). O arquivo do MAP-Elites preenche células com esses pontos, e eles podem tirar do
+  arquivo elites que estavam numa rota.
+- *Ação:* reportar essa fração ao lado do recall de rotas. Medir plausibilidade (C5) e considerar um termo de suporte
+  nos dados ou de plausibilidade no fitness.
+
+- **C19 (baixa). As "violações" do DiCE na simulação são arredondamento.** O DiCE devolve valores em float32, então o
+  atributo imutável contínuo se move em até 1,2e-7, e `constraint_violations` acusa isso com tolerância de 1e-9. Os
+  datasets reais têm atributos imutáveis inteiros, por isso o problema não aparece neles. *Ação:* restaurar os valores
+  congelados exatamente no adaptador do DiCE, ou usar tolerância de 1e-6.
+- **C20 (baixa). O FACE não é totalmente determinístico.** Uma instância em cada uma de 4 configurações mudou entre
+  rodadas idênticas (C4). A causa provável são empates no grafo kNN entre linhas duplicadas, desempatados de forma
+  diferente entre as rodadas. *Ação:* acrescentar um desempate estável no grafo e na busca de caminho mínimo.
 
 ---
 
 ## 5. Próximos passos sugeridos
 
-1. Re-rodar, ou checar por amostragem, as 438 configurações que usaram código antigo (C4).
-2. Fazer a análise de cobertura com k igualado e de estratégias por contrafactual (C1). Isso precisa do `runs/` do Drive.
-3. Implementar plausibilidade e a flag de inteiro (C5), e calibrar as faixas de esforço (C11).
-4. Corrigir o fallback do DiCE-random e revisar as configurações do DiCE-genetic (C9, C10).
+1. ~~Re-rodar, ou checar por amostragem, as 438 configurações que usaram código antigo (C4).~~ Feito em 2026-11-22:
+   os resultados se reproduzem.
+2. Fazer a análise de cobertura com k igualado e de estratégias por contrafactual (C1). Isso precisa da pasta `runs/`.
+3. Implementar plausibilidade e a flag de inteiro (C5) e reportar a fração fora das rotas (C18). Calibrar as faixas de
+   esforço (C11).
+4. ~~Corrigir o fallback do DiCE-random~~ (feito, C9). Revisar as configurações do DiCE-genetic (C9, C10).
 5. Decidir em grupo `train_predictions` e a escala do GMC (C3, C7).
-6. Implementar MOC, NS, NSLC e surprise (C6), e depois rodar a grade final uma única vez, com uma única versão de
+6. Correções pequenas: o desempate do FACE (C20) e o arredondamento dos valores congelados no DiCE (C19).
+7. Implementar MOC, NS, NSLC e surprise (C6), e depois rodar a grade final uma única vez, com uma única versão de
    código commitada.

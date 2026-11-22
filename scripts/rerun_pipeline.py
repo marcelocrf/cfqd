@@ -12,7 +12,7 @@ Stages, in order:
   4. retry       configurations that failed, once more, with 2 processes;
   5. compare     scripts/compare_runs.py -> results/full_rerun/compare_with_full.csv.
 The number of processes is chosen at the start of every chunk from the available memory
-(about 0.45 GB per worker), between 4 and 6. Do not edit cfqd/ while this runs: the workers
+(about 0.9 GB per worker on GMC, 0.5 GB elsewhere), between 2 and 6. Do not edit cfqd/ while this runs: the workers
 import it again at the start of every chunk.
 """
 from __future__ import annotations
@@ -38,7 +38,12 @@ FULL_OUT = "results/full_rerun"
 STATE = REPO / FULL_OUT / "pipeline_state.json"
 LOG = REPO / FULL_OUT / "pipeline.log"
 MAIN_HASHES = {"src:6f60dc36cd", "src:2144fd74c7"}
-GB_PER_WORKER = 0.45
+# 0.45 GB was measured on a fresh process; workers grow with every configuration they run
+# (1.24 GB private on GMC after ~10 configurations), which made Windows thrash on 2026-11-22.
+# Hence a larger estimate, at least 2 processes, and a new pool per (dataset, model) in stage 3.
+GB_PER_WORKER = {"gmc": 0.9}   # GMC has 150k rows; the other datasets fit in about 0.5 GB
+GB_DEFAULT = 0.5
+MIN_JOBS, MAX_JOBS = 2, 6
 
 
 def stamp() -> str:
@@ -68,9 +73,9 @@ def c4_sample() -> set[str]:
     return pick
 
 
-def jobs_now() -> int:
+def jobs_now(dataset: str | None = None) -> int:
     avail = psutil.virtual_memory().available / 2**30
-    return int(min(6, max(4, avail // GB_PER_WORKER)))
+    return int(min(MAX_JOBS, max(MIN_JOBS, avail // GB_PER_WORKER.get(dataset, GB_DEFAULT))))
 
 
 def keep_awake() -> None:
@@ -90,8 +95,8 @@ def write_state(**kw) -> None:
     STATE.write_text(json.dumps(s, indent=1), encoding="utf-8")
 
 
-def run_chunk(stage: str, chunk: str, exp: dict, only) -> None:
-    jobs = jobs_now()
+def run_chunk(stage: str, chunk: str, exp: dict, only, dataset: str | None = None) -> None:
+    jobs = jobs_now(dataset)
     write_state(stage=stage, chunk=chunk, jobs=jobs, chunk_started=stamp())
     avail = psutil.virtual_memory().available / 2**30
     print(f"\n=== {stamp()} | {stage} / {chunk} | {jobs} processes | {avail:.1f} GB available ===",
@@ -109,7 +114,10 @@ def main() -> None:
     run_chunk("1/5 c4_sample", f"{len(sample)} configurations", full, lambda k: k.stem in sample)
     run_chunk("2/5 simulation", f"{len(expand_grid(sim)[0])} configurations", sim, None)
     for ds in full["datasets"]:
-        run_chunk("3/5 full", ds, full, lambda k, ds=ds: k.dataset == ds)
+        for model in full["models"]:  # a fresh pool per (dataset, model) releases worker memory
+            if any(not is_done(k, full) for k in expand_grid(full)[0] if (k.dataset, k.model) == (ds, model)):
+                run_chunk("3/5 full", f"{ds} / {model}", full,
+                          lambda k, ds=ds, model=model: (k.dataset, k.model) == (ds, model), dataset=ds)
     for name, exp in (("full", full), ("simulation", sim)):
         if any(not is_done(k, exp) for k in expand_grid(exp)[0]):
             write_state(stage="4/5 retry", chunk=name, jobs=2, chunk_started=stamp())
